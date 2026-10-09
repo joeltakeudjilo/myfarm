@@ -86,6 +86,11 @@ export default function Vente({ user, profil, bande }) {
         .filter((s) => s.type !== "mort_vendu")
         .reduce((s, x) => s + (Number(x.quantite) || 0), 0);
     const restants = bande.poussinsVivantsEntres - totalMorts - sortis;
+    const mortsVendus = valides
+        .filter((s) => s.type === "mort_vendu")
+        .reduce((s, x) => s + (Number(x.quantite) || 0), 0);
+    const mortsDispo = totalMorts - mortsVendus;
+
 
     function detteDe(id) {
         if (!id) return 0;
@@ -128,6 +133,10 @@ export default function Vente({ user, profil, bande }) {
             return setMsg("Seul un ajustement peut avoir une quantité négative.");
         if (type === "vente" && !nomNet)
             return setMsg("Choisissez ou tapez le nom du client.");
+        if (type === "mort_vendu" && q > mortsDispo)
+            return setMsg(`Seulement ${mortsDispo} mort(s) disponible(s) à la vente.` +
+                `(morts saisis: ${totalMorts}, dejà vendus: ${mortsVendus}). ` +
+                `Saisissez d'abord la mortalité.`);
         if (avecPrix && (!Number.isInteger(p) || p < 0))
             return setMsg("Le prix unitaire doit être un nombre entier.");
         if (!Number.isInteger(v) || v < 0)
@@ -226,6 +235,12 @@ export default function Vente({ user, profil, bande }) {
                     {type === "vente" && q > restants && (
                         <div style={{ color: "crimson", fontSize: 13 }}>
                             Attention : plus que les {restants} poulets restants.
+                        </div>
+                    )}
+                    {type === "mort_vendu" && (
+                        <div style={{ fontSize: 13 }}>
+                            Morts disponibles à la vente : <b>{mortsDispo}</b> (saisis dans
+                            Mortalité, pas encore vendus)
                         </div>
                     )}
                     <br /><br />

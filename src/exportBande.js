@@ -91,6 +91,7 @@ export async function exporterBande({ bande, user, profil }) {
     add("morts", "Morts", () => `SUM(${M("D")})`);
     add("mortsS1", "dont site 1", () => `SUMIFS(${M("D")},${M("C")},1)`);
     add("mortsS2", "dont site 2", () => `SUMIFS(${M("D")},${M("C")},2)`);
+    add("mortsVendus", "dont morts vendus", () => `SUMIFS(${S("D")},${S("C")},"Mort vendu")`);
     add("parti", "Effectif parti du site 1",
         bande.effectifTransfere != null ? num(bande.effectifTransfere) : "—");
     add("recu", "Effectif reçu au site 2",
@@ -121,6 +122,7 @@ export async function exporterBande({ bande, user, profil }) {
     add("ca", "Chiffre d'affaires", () => `SUM(${S("F")})`, FCFA);
     add("enc", "Encaissé à la vente", () => `SUM(${S("G")})`, FCFA);
     add("du", "Reste dû sur les ventes de la bande", () => `SUM(${S("H")})`, FCFA);
+    add("recMorts", "dont recettes des morts vendus", () => `SUMIFS(${S("F")},${S("C")},"Mort vendu")`, FCFA);
     add("remb", "Remboursements de dettes reçus pendant la bande",
         () => `SUM(${rng("Remboursements", "C", nr)})`, FCFA);
     add("treso", "Trésorerie encaissée (vente + remboursements)",
@@ -133,6 +135,9 @@ export async function exporterBande({ bande, user, profil }) {
         () => `IF(${R("vendus")}=0,0,${R("mVentes")}/${R("vendus")})`, FCFA);
     add("manque", "Manque à gagner (non vendus × prix de revient)",
         () => `(${R("vivants")}-${R("morts")}-${R("vendus")})*${R("pr")}`, FCFA);
+
+    add("perteNette", "Perte nette sur mortalité (morts × prix de revient − recettes)",
+        () => `${R("morts")}*${R("pr")}-${R("recMorts")}`, FCFA);
 
     let row = 6;
     L.forEach((x) => {

@@ -85,6 +85,11 @@ export default function Bilan({ user, profil, bande }) {
         .filter((s) => s.type === "vente" || s.type === "reserve")
         .reduce((s, x) => s + (num(x.prixUnitaire) - pr) * num(x.quantite), 0);
     const margeTotale = ca - cout;
+    const mortsVendus = sor.filter((s) => s.type === "mort_vendu")
+        .reduce((s, x) => s + num(x.quantite), 0);
+    const recMorts = sor.filter((s) => s.type === "mort_vendu")
+        .reduce((s, x) => s + num(x.montantTotal), 0);
+    const perteNette = M * pr - recMorts;
     const manque = nonVendus * pr;
 
     // Coûts par rubrique
@@ -166,6 +171,7 @@ export default function Bilan({ user, profil, bande }) {
             <h3>Cheptel</h3>
             <Ligne l="Poussins vivants entrés" v={V} />
             <Ligne l="Morts" v={`${M} (${pct(V ? M / V : NaN)})`} />
+            <Ligne l="Morts vendus" v={mortsVendus} />
             {tr && <Ligne l="Morts site 1 / site 2" v={`${mortsS1} / ${mortsS2}`} />}
             {tr && <Ligne l="Écart de transfert (parti − reçu)" v={ecartTr} />}
             <Ligne l="Poulets sortis (tous types)" v={sortis} />
@@ -180,7 +186,11 @@ export default function Bilan({ user, profil, bande }) {
                 v={fcfa(pr) + " / poulet"} />
 
             <h3>Argent</h3>
-            <Ligne l="Chiffre d'affaires" v={fcfa(ca)} />
+            {/* <Ligne l="Chiffre d'affaires" v={fcfa(ca)} /> */}
+            <Ligne l="Ventes de poulets vivants et réservés" v={fcfa(ca - recMorts)} />
+            <Ligne l="Recettes des morts vendus" v={fcfa(recMorts)} />
+            <Ligne l="Chiffre d'affaires total" v={fcfa(ca)} />
+
             <Ligne l="Encaissé à la vente" v={fcfa(encaisse)} />
             <Ligne l="Reste dû sur les ventes de la bande" v={fcfa(resteDu)} />
 
@@ -189,6 +199,12 @@ export default function Bilan({ user, profil, bande }) {
             <Ligne l="Marge totale (CA − coût total)" v={fcfa(margeTotale)} />
             <Ligne l={`Manque à gagner (${nonVendus} non vendus × prix de revient)`}
                 v={fcfa(manque)} />
+
+            <Ligne l="Perte nette sur mortalité (morts × prix de revient − recettes)"
+                v={fcfa(perteNette)} />
+
+            <Ligne l="Résultat net (marge totale − manque à gagner)"
+                v={fcfa(margeTotale - manque)} />
 
             <h3>Coûts par rubrique</h3>
             {parRubrique.length === 0 && <p>Aucune dépense.</p>}

@@ -110,7 +110,8 @@ export default function Accueil({ profil, bandes, onOuvrir, onNouvelle, onDettes
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "12px 0" }}>
                 {profil?.role === "admin" && (
-                    <button type="button" onClick={onNouvelle}>Nouvelle bande</button>
+                    // <button type="button" onClick={onNouvelle}>Nouvelle bande</button>
+                    <button type="button" className="primaire" onClick={onNouvelle}>Nouvelle bande</button>
                 )}
                 <button type="button" onClick={onDettes}>Dettes clients</button>
             </div>
@@ -121,7 +122,8 @@ export default function Accueil({ profil, bandes, onOuvrir, onNouvelle, onDettes
                 </button>
             </p>
             {panneau && (
-                <div style={{ border: "1px solid #8886", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                // <div style={{ border: "1px solid #8886", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                <div className="carte">
                     <b>Bandes à inclure</b>
                     <p>
                         <button type="button"

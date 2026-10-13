@@ -6,6 +6,9 @@ import {
 import { db } from "./firebase";
 
 const fcfa = (n) => Math.round(Number(n) || 0).toLocaleString("fr-FR") + " F";
+const dec = (n) =>
+    (Number(n) || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const cleJour = (ts) => (ts?.toDate ? ts.toDate().toLocaleDateString("sv-SE") : "");
 
 const TYPES = [
     ["vente", "Vente"],
@@ -21,19 +24,28 @@ const AVEC_PRIX = ["vente", "reserve", "mort_vendu"];
 const libelleType = (t) => (TYPES.find((x) => x[0] === t) || [t, t])[1];
 
 export default function Vente({ user, profil, bande }) {
+    const aujourdhui = new Date().toLocaleDateString("sv-SE");
     const [clients, setClients] = useState([]);
     const [toutes, setToutes] = useState([]); // toutes les sorties, toutes bandes
     const [rembs, setRembs] = useState([]);
     const [morts, setMorts] = useState([]);
+    const [deps, setDeps] = useState([]);
 
-    const [date, setDate] = useState(new Date().toLocaleDateString("sv-SE"));
+    const [date, setDate] = useState(aujourdhui);
     const [type, setType] = useState("vente");
     const [clientNom, setClientNom] = useState("");
     const [quantite, setQuantite] = useState("");
     const [prix, setPrix] = useState("");
+    const [prixTouche, setPrixTouche] = useState(false);
     const [verse, setVerse] = useState("");
     const [note, setNote] = useState("");
     const [msg, setMsg] = useState("");
+
+    // Filtres de l'historique
+    const [fClient, setFClient] = useState("");
+    const [fDu, setFDu] = useState("");
+    const [fAu, setFAu] = useState("");
+    const [tout, setTout] = useState(false);
 
     useEffect(() => {
         return onSnapshot(collection(db, "clients"), (snap) => {
@@ -75,9 +87,13 @@ export default function Vente({ user, profil, bande }) {
         );
     }, [bande.id]);
 
-    const sortiesBande = toutes
-        .filter((s) => s.bandeId === bande.id)
-        .sort((a, b) => (b.creeLe?.toMillis?.() || 0) - (a.creeLe?.toMillis?.() || 0));
+    useEffect(() => {
+        return onSnapshot(collection(db, "bandes", bande.id, "depenses"), (snap) =>
+            setDeps(snap.docs.map((d) => d.data()))
+        );
+    }, [bande.id]);
+
+    const sortiesBande = toutes.filter((s) => s.bandeId === bande.id);
     const valides = sortiesBande.filter((s) => !s.annule);
     const totalMorts = morts
         .filter((m) => !m.annule)
@@ -91,6 +107,21 @@ export default function Vente({ user, profil, bande }) {
         .reduce((s, x) => s + (Number(x.quantite) || 0), 0);
     const mortsDispo = totalMorts - mortsVendus;
 
+    // Prix de revient provisoire de la bande (coût total ÷ survivants)
+    const coutTotal = deps
+        .filter((d) => !d.annule)
+        .reduce((s, d) => s + (Number(d.total) || 0), 0);
+    const base = (Number(bande.poussinsVivantsEntres) || 0) - totalMorts;
+    const pr = base > 0 ? coutTotal / base : 0;
+
+    // Le prix est prérempli avec le prix de revient (arrondi), sauf pour les morts vendus
+    const defautPrix = (t) =>
+        (t === "vente" || t === "reserve") && pr > 0 ? String(Math.round(pr)) : "";
+    useEffect(() => {
+        if (prixTouche) return;
+        setPrix(defautPrix(type));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [type, pr, prixTouche]);
 
     function detteDe(id) {
         if (!id) return 0;
@@ -109,18 +140,61 @@ export default function Vente({ user, profil, bande }) {
     );
     const avecPrix = AVEC_PRIX.includes(type);
     const q = Number(quantite) || 0;
-    const totalVente = avecPrix ? Math.round(q * (Number(prix) || 0)) : 0;
+    const pNum = Number(prix) || 0;
+    const totalVente = avecPrix ? Math.round(q * pNum) : 0;
     const verseN = avecPrix ? Number(verse) || 0 : 0;
     const reste = totalVente - verseN;
     const detteActuelle = detteDe(clientTrouve?.id);
     const detteApres = detteActuelle + reste;
     const statut = !avecPrix || totalVente === 0 ? "-"
         : reste === 0 ? "Payé" : verseN > 0 ? "Avance" : "Non payé";
+    const margeSaisie =
+        (type === "vente" || type === "reserve") && q > 0 && pr > 0
+            ? (pNum - pr) * q : null;
     const enAttente = sortiesBande.filter((s) => s.enAttente).length;
     const peutEcrire =
-        // profil && ["admin", "saisie"].includes(profil.role)
         profil && ["admin", "saisie"].includes(profil.role) && bande.statut !== "cloturee";
 
+    // Historique filtré
+    const cleClient = (s) => s.clientId || s.clientNom || "";
+    const clientsHisto = [];
+    const vus = new Set();
+    valides.forEach((s) => {
+        const k = cleClient(s);
+        if (k && !vus.has(k)) {
+            vus.add(k);
+            clientsHisto.push({
+                k,
+                nom: s.clientNom || clients.find((c) => c.id === s.clientId)?.nom || "?",
+            });
+        }
+    });
+    clientsHisto.sort((a, b) => a.nom.localeCompare(b.nom));
+
+    const filtreActif = !!(fClient || fDu || fAu);
+    const filtrees = valides
+        .filter(
+            (s) =>
+                (!fClient || cleClient(s) === fClient) &&
+                (!fDu || cleJour(s.date) >= fDu) &&
+                (!fAu || cleJour(s.date) <= fAu)
+        )
+        .sort(
+            (a, b) =>
+                (b.date?.toMillis?.() || 0) - (a.date?.toMillis?.() || 0) ||
+                (b.creeLe?.toMillis?.() || 0) - (a.creeLe?.toMillis?.() || 0)
+        );
+    const affichees = filtreActif || tout ? filtrees : filtrees.slice(0, 10);
+    const avecPrixF = filtrees.filter((s) => AVEC_PRIX.includes(s.type));
+    const tot = {
+        n: filtrees.length,
+        poulets: filtrees.reduce((s, x) => s + (Number(x.quantite) || 0), 0),
+        montant: avecPrixF.reduce((s, x) => s + (Number(x.montantTotal) || 0), 0),
+        verse: avecPrixF.reduce((s, x) => s + (Number(x.montantVerse) || 0), 0),
+        reste: avecPrixF.reduce((s, x) => s + (Number(x.resteAPayer) || 0), 0),
+    };
+    const auteur = (s) =>
+        s.creeParNom || (s.creePar === user.uid ? profil?.nom : "") || "autre utilisateur";
 
     function enregistrer(e) {
         e.preventDefault();
@@ -134,8 +208,9 @@ export default function Vente({ user, profil, bande }) {
         if (type === "vente" && !nomNet)
             return setMsg("Choisissez ou tapez le nom du client.");
         if (type === "mort_vendu" && q > mortsDispo)
-            return setMsg(`Seulement ${mortsDispo} mort(s) disponible(s) à la vente.` +
-                `(morts saisis: ${totalMorts}, dejà vendus: ${mortsVendus}). ` +
+            return setMsg(
+                `Seulement ${mortsDispo} mort(s) disponible(s) à la vente ` +
+                `(morts saisis : ${totalMorts}, déjà vendus : ${mortsVendus}). ` +
                 `Saisissez d'abord la mortalité.`);
         if (avecPrix && (!Number.isInteger(p) || p < 0))
             return setMsg("Le prix unitaire doit être un nombre entier.");
@@ -174,6 +249,7 @@ export default function Vente({ user, profil, bande }) {
             resteAPayer: total - v,
             note: note.trim(),
             creePar: user.uid,
+            creeParNom: profil?.nom || "",
             creeLe: Timestamp.now(),
             syncLe: serverTimestamp(),
             source: "mobile",
@@ -181,7 +257,8 @@ export default function Vente({ user, profil, bande }) {
         }).catch((err) => setMsg("Refusé : " + err.code));
 
         setType("vente"); setClientNom(""); setQuantite("");
-        setPrix(""); setVerse(""); setNote(""); setMsg("");
+        setPrixTouche(false); setPrix(defautPrix("vente"));
+        setVerse(""); setNote(""); setMsg("");
     }
 
     function annuler(s) {
@@ -199,18 +276,18 @@ export default function Vente({ user, profil, bande }) {
 
             {peutEcrire ? (
                 <form onSubmit={enregistrer}>
-                    <label>Date<br />
+                    <label>Date
                         <input type="date" value={date}
                             onChange={(e) => setDate(e.target.value)} />
-                    </label><br /><br />
+                    </label>
 
-                    <label>Type de sortie<br />
+                    <label>Type de sortie
                         <select value={type} onChange={(e) => setType(e.target.value)}>
                             {TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                         </select>
-                    </label><br /><br />
+                    </label>
 
-                    <label>Client (choisir ou taper un nouveau nom)<br />
+                    <label>Client (choisir ou taper un nouveau nom)
                         <input list="clients" value={clientNom}
                             onChange={(e) => setClientNom(e.target.value)}
                             placeholder="Ex. Ulrich" />
@@ -226,9 +303,8 @@ export default function Vente({ user, profil, bande }) {
                             ? `Client existant · dette actuelle ${fcfa(detteActuelle)}`
                             : "Nouveau client : il sera créé à l'enregistrement")}
                     </div>
-                    <br />
 
-                    <label>Nombre de poulets<br />
+                    <label>Nombre de poulets
                         <input type="number" inputMode="numeric" step="1" value={quantite}
                             onChange={(e) => setQuantite(e.target.value)} />
                     </label>
@@ -243,22 +319,44 @@ export default function Vente({ user, profil, bande }) {
                             Mortalité, pas encore vendus)
                         </div>
                     )}
-                    <br /><br />
 
                     {avecPrix && (
                         <>
-                            <label>Prix unitaire (F)<br />
+                            <label>Prix unitaire (F)
                                 <input type="number" inputMode="numeric" min="0" step="1"
-                                    value={prix} onChange={(e) => setPrix(e.target.value)} />
-                            </label><br /><br />
-                            <label>Montant versé aujourd'hui (F)<br />
+                                    value={prix}
+                                    onChange={(e) => { setPrix(e.target.value); setPrixTouche(true); }} />
+                            </label>
+                            {pr > 0 && (
+                                <div style={{ fontSize: 13, opacity: 0.85 }}>
+                                    Prix de revient provisoire : <b>{dec(pr)} F</b>{" "}
+                                    {(type === "vente" || type === "reserve") && (
+                                        <button type="button" className="petit"
+                                            onClick={() => { setPrixTouche(false); setPrix(defautPrix(type)); }}>
+                                            Utiliser ce prix
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                            {margeSaisie != null && (
+                                <div style={{
+                                    fontSize: 13, fontWeight: 600,
+                                    color: margeSaisie < 0 ? "crimson" : undefined,
+                                }}>
+                                    {margeSaisie < 0 ? "⚠ Sous le prix de revient : " : "Marge sur cette sortie : "}
+                                    {fcfa(margeSaisie)}
+                                </div>
+                            )}
+                            <label>Montant versé aujourd'hui (F)
                                 <input type="number" inputMode="numeric" min="0" step="1"
                                     value={verse} onChange={(e) => setVerse(e.target.value)} />
-                            </label>{" "}
-                            <button type="button" onClick={() => setVerse(String(totalVente))}>
-                                Tout payé
-                            </button>
-                            <br /><br />
+                            </label>
+                            <p>
+                                <button type="button" className="petit"
+                                    onClick={() => setVerse(String(totalVente))}>
+                                    Tout payé
+                                </button>
+                            </p>
                             <p>
                                 Total : <b>{fcfa(totalVente)}</b><br />
                                 Reste à payer : <b>{fcfa(reste)}</b><br />
@@ -268,9 +366,9 @@ export default function Vente({ user, profil, bande }) {
                         </>
                     )}
 
-                    <label>Note (facultatif)<br />
+                    <label>Note (facultatif)
                         <input value={note} onChange={(e) => setNote(e.target.value)} />
-                    </label><br /><br />
+                    </label>
                     <button type="submit">Enregistrer</button>
                 </form>
             ) : (
@@ -278,9 +376,50 @@ export default function Vente({ user, profil, bande }) {
             )}
             {msg && <p style={{ color: "crimson" }}>{msg}</p>}
 
-            <h3>Dernières sorties</h3>
+            <h3>Historique des sorties</h3>
+            <div style={{ border: "1px solid #8886", borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                <label style={{ marginTop: 0 }}>Client
+                    <select value={fClient} onChange={(e) => setFClient(e.target.value)}>
+                        <option value="">Tous les clients</option>
+                        {clientsHisto.map((c) => (
+                            <option key={c.k} value={c.k}>{c.nom}</option>
+                        ))}
+                    </select>
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <label>Du
+                        <input type="date" value={fDu} max={fAu || undefined}
+                            onChange={(e) => setFDu(e.target.value)} />
+                    </label>
+                    <label>Au
+                        <input type="date" value={fAu} min={fDu || undefined}
+                            onChange={(e) => setFAu(e.target.value)} />
+                    </label>
+                </div>
+                <p style={{ marginBottom: 0 }}>
+                    <button type="button" className="petit"
+                        onClick={() => { setFDu(aujourdhui); setFAu(aujourdhui); }}>
+                        Aujourd'hui
+                    </button>{" "}
+                    {filtreActif && (
+                        <button type="button" className="petit"
+                            onClick={() => { setFClient(""); setFDu(""); setFAu(""); }}>
+                            Effacer les filtres
+                        </button>
+                    )}
+                </p>
+            </div>
+
+            {filtreActif && (
+                <p style={{ fontSize: 14 }}>
+                    <b>{tot.n}</b> sortie{tot.n > 1 ? "s" : ""} · <b>{tot.poulets}</b> poulets ·
+                    total <b>{fcfa(tot.montant)}</b> · versé <b>{fcfa(tot.verse)}</b> ·
+                    reste <b>{fcfa(tot.reste)}</b>
+                </p>
+            )}
+            {filtrees.length === 0 && <p>Aucune sortie pour ces critères.</p>}
             <ul>
-                {valides.slice(0, 10).map((s) => (
+                {affichees.map((s) => (
                     <li key={s.id}>
                         {s.date?.toDate ? s.date.toDate().toLocaleDateString("fr-FR") : "?"}{" "}
                         : {libelleType(s.type)}
@@ -289,6 +428,8 @@ export default function Vente({ user, profil, bande }) {
                             <> × {fcfa(s.prixUnitaire)} = <b>{fcfa(s.montantTotal)}</b>
                                 {" "}(versé {fcfa(s.montantVerse)}, reste {fcfa(s.resteAPayer)})</>
                         )}
+                        <br />
+                        <span style={{ fontSize: 12, opacity: 0.75 }}>saisi par {auteur(s)}</span>
                         {s.enAttente && " ⏳"}{" "}
                         {peutEcrire && (
                             <button type="button" onClick={() => annuler(s)}>Annuler</button>
@@ -296,6 +437,11 @@ export default function Vente({ user, profil, bande }) {
                     </li>
                 ))}
             </ul>
+            {!filtreActif && filtrees.length > 10 && (
+                <button type="button" className="petit" onClick={() => setTout(!tout)}>
+                    {tout ? "Afficher moins" : `Afficher tout (${filtrees.length})`}
+                </button>
+            )}
         </div>
     );
 }

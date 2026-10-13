@@ -183,7 +183,8 @@ export default function Bilan({ user, profil, bande }) {
             <Ligne l="Charges fixes imputées" v={fcfa(coutImpute)} />
             <Ligne l="Coût total" v={fcfa(cout)} />
             <Ligne l={figé ? "Prix de revient final" : "Prix de revient provisoire"}
-                v={fcfa(pr) + " / poulet"} />
+                // v={fcfa(pr) + " / poulet"} />
+                v={pr.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " F / poulet"} />
 
             <h3>Argent</h3>
             {/* <Ligne l="Chiffre d'affaires" v={fcfa(ca)} /> */}
@@ -199,6 +200,10 @@ export default function Bilan({ user, profil, bande }) {
             <Ligne l="Marge totale (CA − coût total)" v={fcfa(margeTotale)} />
             <Ligne l={`Manque à gagner (${nonVendus} non vendus × prix de revient)`}
                 v={fcfa(manque)} />
+            {/* <p style={{ fontSize: 12, opacity: 0.7, margin: "4px 0" }}>
+                Le manque à gagner est déjà compris dans la marge totale : c'est la
+                part de la perte due aux poulets pas encore vendus.
+            </p> */}
 
             <Ligne l="Perte nette sur mortalité (morts × prix de revient − recettes)"
                 v={fcfa(perteNette)} />

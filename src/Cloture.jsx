@@ -44,7 +44,8 @@ export default function Cloture({ user, profil, bande }) {
     const nbImputees = dep.filter((d) => d.nature === "imputee").length;
     const ca = sor.filter((s) => AVEC_PRIX.includes(s.type))
         .reduce((s, x) => s + num(x.montantTotal), 0);
-    const prixFinal = base > 0 ? Math.round(cout / base) : 0;
+    // const prixFinal = base > 0 ? Math.round(cout / base) : 0;
+    const prixFinal = base > 0 ? Math.round((cout / base) * 100) / 100 : 0
     const classes = TYPES.reduce((s, [k]) => s + (Number(q[k]) || 0), 0);
 
     if (profil?.role !== "admin")
@@ -93,7 +94,8 @@ export default function Cloture({ user, profil, bande }) {
             return;
         if (!window.confirm(
             `Clôturer ${bande.libelle || "la bande"} ?\n\n` +
-            `Prix de revient final : ${fcfa(prixFinal)} par poulet\n` +
+            // `Prix de revient final : ${fcfa(prixFinal)} par poulet\n` +
+            `Prix de revient final : ${prixFinal.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} par poulet\n` +
             `Plus aucune mortalité, dépense ni vente ne pourra y être saisie.`))
             return;
 

@@ -1,4 +1,4 @@
-const CACHE = "suivi-bandes-v1";
+const CACHE = "suivi-bandes-v2";
 const COQUILLE = [
     "/", "/index.html", "/manifest.webmanifest",
     "/pwa-192x192.png", "/pwa-512x512.png", "/favicon.svg",
